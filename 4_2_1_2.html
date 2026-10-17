@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="th" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>🎮 ชี้ให้ถูก! ภารกิจเรียงลำดับอัลกอริทึม (ว 4.2 ม.1/2)</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        algo: {
+                            bg: '#0a0f1d',
+                            card: '#131c31',
+                            primary: '#06b6d4',
+                            accent: '#a855f7',
+                            neon: '#38bdf8',
+                            success: '#10b981',
+                            danger: '#ef4444',
+                            warning: '#f59e0b'
+                        }
+                    },
+                    fontFamily: {
+                        kanit: ['"Kanit"', 'sans-serif'],
+                        mono: ['"Fira Code"', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Google Fonts: Kanit & Fira Code -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@600;700&family=Kanit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- MediaPipe Hands & Camera Utils CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            font-family: 'Kanit', sans-serif;
+            background-color: #0a0f1d;
+            color: #f8fafc;
+            overflow: hidden;
+            user-select: none;
+            touch-action: none;
+        }
+
+        .mirror-feed {
+            transform: scaleX(-1);
+        }
+
+        .glow-cyan {
+            box-shadow: 0 0 20px rgba(6, 182, 212, 0.4);
+        }
+
+        .glow-purple {
+            box-shadow: 0 0 20px rgba(168, 85, 247, 0.4);
+        }
+
+        .glow-green {
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 0.8; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.03); }
+        }
+
+        .animate-pulse-glow {
+            animation: pulseGlow 2s infinite;
+        }
+
+        @keyframes floatSlow {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-6px); }
+        }
+
+        .animate-float {
+            animation: floatSlow 3s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen relative bg-slate-950 font-kanit overflow-hidden">
+
+    <!-- Hidden Raw Webcam Video Element -->
+    <video id="webcam-video" class="hidden" playsinline></video>
+
+    <!-- Main AR Video Rendering Canvas -->
+    <canvas id="ar-canvas" class="absolute inset-0 w-full h-full object-cover z-0 mirror-feed"></canvas>
+
+    <!-- Foreground Interactive Canvas (Finger Cursor & VFX) -->
+    <canvas id="fx-canvas" class="absolute inset-0 w-full h-full z-10 pointer-events-none"></canvas>
+
+    <!-- ========================================================================== -->
+    <!-- HUD HEADER NAVBAR -->
+    <!-- ========================================================================== -->
+    <header class="absolute top-0 left-0 right-0 z-30 p-3 md:p-4 bg-slate-950/85 backdrop-blur-md border-b border-cyan-500/30 flex justify-between items-center select-none">
+        <!-- Game Title Logo -->
+        <div class="flex items-center gap-2 md:gap-3">
+            <div class="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 via-purple-600 to-pink-500 flex items-center justify-center text-white text-xl md:text-2xl font-black shadow-lg shadow-cyan-500/30">
+                <i class="fa-solid fa-code-branch"></i>
+            </div>
+            <div>
+                <h1 class="text-base md:text-xl font-black bg-gradient-to-r from-cyan-400 via-purple-300 to-pink-400 bg-clip-text text-transparent tracking-tight">
+                    ชี้ให้ถูก! ภารกิจเรียงลำดับอัลกอริทึม
+                </h1>
+                <p class="text-[10px] md:text-xs text-cyan-300/80 font-mono flex items-center gap-1">
+                    <span class="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+                    วิทยาการคำนวณ ม.1 (ตัวชี้วัด ว 4.2 ม.1/2)
+                </p>
+            </div>
+        </div>
+
+        <!-- HUD Statistics -->
+        <div class="flex items-center gap-2 md:gap-5">
+            <!-- Question Counter -->
+            <div class="bg-slate-900/90 border border-slate-700/80 px-3 py-1 md:px-4 md:py-1.5 rounded-2xl text-center">
+                <div class="text-[9px] md:text-[10px] text-slate-400 font-mono uppercase">ข้อที่</div>
+                <div id="hud-q-number" class="text-sm md:text-base font-black text-cyan-400 font-mono">1 / 10</div>
+            </div>
+
+            <!-- Score Display -->
+            <div class="bg-slate-900/90 border border-slate-700/80 px-3 py-1 md:px-4 md:py-1.5 rounded-2xl text-center">
+                <div class="text-[9px] md:text-[10px] text-slate-400 font-mono uppercase">คะแนนรวม</div>
+                <div id="hud-score" class="text-sm md:text-base font-black text-yellow-400 font-mono">0 pts</div>
+            </div>
+
+            <!-- Camera & Hand Status Indicator -->
+            <div id="hand-status-badge" class="hidden sm:flex bg-red-500/20 border border-red-500/50 px-3 py-1.5 rounded-xl items-center gap-2 text-xs text-red-300">
+                <span id="hand-status-dot" class="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
+                <span id="hand-status-text">โหมดสัมผัส</span>
+            </div>
+
+            <!-- Audio Toggle Button -->
+            <button id="btn-sound" class="w-10 h-10 md:w-11 md:h-11 rounded-2xl bg-slate-900 border border-slate-700 hover:border-cyan-400 text-cyan-400 flex items-center justify-center transition active:scale-95">
+                <i id="sound-icon" class="fa-solid fa-volume-high text-base"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Camera Not Detected Warning Floating Banner -->
+    <div id="no-hand-alert" class="hidden absolute top-20 left-1/2 -translate-x-1/2 z-30 bg-amber-500/90 text-slate-950 font-extrabold px-5 py-2 rounded-2xl border-2 border-amber-300 shadow-xl backdrop-blur-md flex items-center gap-2 text-xs md:text-sm animate-bounce">
+        <i class="fa-solid fa-hand-point-up text-lg"></i>
+        <span>📷 กรุณายกมือให้อยู่หน้ากล้อง แล้วใช้นิ้วชี้เล็งคำตอบ</span>
+    </div>
+
+    <!-- ========================================================================== -->
+    <!-- MAIN AR QUESTION & OPTIONS OVERLAY LAYOUT -->
+    <!-- ========================================================================== -->
+    <main id="game-ui-container" class="absolute inset-0 pt-20 pb-6 px-4 z-20 flex flex-col justify-between max-w-5xl mx-auto pointer-events-none">
+        
+        <!-- Question Card Box (Top) -->
+        <div class="bg-slate-900/90 border-2 border-cyan-500/40 p-4 md:p-6 rounded-3xl backdrop-blur-md shadow-2xl space-y-2 pointer-events-auto transition">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span id="q-category" class="text-[10px] md:text-xs font-mono font-bold text-cyan-400 uppercase tracking-widest bg-cyan-950/80 px-3 py-1 rounded-full border border-cyan-500/30">
+                    <i class="fa-solid fa-cubes mr-1"></i> อัลกอริทึมและการแก้ปัญหา
+                </span>
+                <span class="text-xs font-mono text-purple-300">
+                    <i class="fa-solid fa-clock mr-1"></i> จ่อนิ้วชี้ค้างไว้ 1.5 วินาทีเพื่อเลือก
+                </span>
+            </div>
+            <h2 id="q-title" class="text-base md:text-xl font-extrabold text-white leading-relaxed">
+                กำลังโหลดโจทย์...
+            </h2>
+            <p id="q-description" class="text-xs md:text-sm text-slate-300">
+                -
+            </p>
+        </div>
+
+        <!-- Option Choice Grid Blocks (Bottom) -->
+        <div id="options-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 pointer-events-auto my-auto">
+            <!-- Option buttons will be dynamically injected here -->
+        </div>
+
+        <!-- Instructional Bottom Helper Bar -->
+        <div class="text-center text-[11px] md:text-xs text-slate-400 font-mono bg-slate-950/80 py-2 px-4 rounded-xl border border-slate-800 backdrop-blur-md pointer-events-auto">
+            💡 <span class="text-cyan-300 font-bold">เทคนิค:</span> นำปลายนิ้วชี้ไปจ่อไว้เหนือบล็อกคำตอบ วงกลมหลอดโหลดจะทำงานเพื่อยืนยันคำตอบ (หรือใช้เมาส์/ทัชสกรีนกดตอบได้)
+        </div>
+    </main>
+
+    <!-- ========================================================================== -->
+    <!-- ANSWER FEEDBACK MODAL POPUP -->
+    <!-- ========================================================================== -->
+    <div id="modal-feedback" class="hidden absolute inset-0 z-40 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div id="feedback-card" class="max-w-md w-full bg-slate-900 border-2 rounded-3xl p-6 text-center space-y-4 shadow-2xl transform transition-all scale-95">
+            <div id="feedback-icon-container" class="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center text-3xl font-black shadow-lg">
+                <i id="feedback-icon" class="fa-solid"></i>
+            </div>
+            <div>
+                <h3 id="feedback-title" class="text-xl md:text-2xl font-black"></h3>
+                <p id="feedback-msg" class="text-xs md:text-sm text-slate-300 mt-2 leading-relaxed"></p>
+            </div>
+            <button id="btn-next-q" class="w-full py-3 rounded-2xl bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-black font-extrabold text-sm md:text-base tracking-wide uppercase shadow-lg shadow-cyan-500/20 active:scale-95 transition">
+                ข้อถัดไป <i class="fa-solid fa-arrow-right ml-1"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- ========================================================================== -->
+    <!-- START & CAMERA PERMISSION OVERLAY SCREEN -->
+    <!-- ========================================================================== -->
+    <div id="screen-start" class="absolute inset-0 z-50 bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-4 overflow-y-auto">
+        <div class="max-w-2xl w-full bg-slate-900/90 border border-cyan-500/40 rounded-3xl p-6 md:p-8 text-center space-y-6 shadow-2xl relative my-auto">
+            <!-- Banner Icon -->
+            <div class="relative inline-block">
+                <div class="w-20 h-20 md:w-24 md:h-24 mx-auto rounded-3xl bg-gradient-to-tr from-cyan-500 via-purple-600 to-pink-500 flex items-center justify-center text-white text-4xl md:text-5xl shadow-xl shadow-cyan-500/30 animate-float">
+                    <i class="fa-solid fa-hand-pointer"></i>
+                </div>
+                <span class="absolute -bottom-2 -right-2 bg-cyan-400 text-slate-950 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow">
+                    ม.1 AR
+                </span>
+            </div>
+
+            <div>
+                <h2 class="text-2xl md:text-4xl font-black text-white tracking-tight">
+                    🎮 ชี้ให้ถูก! ภารกิจเรียงลำดับอัลกอริทึม
+                </h2>
+                <p class="text-cyan-400 text-sm md:text-base font-semibold mt-1">
+                    สื่อการเรียนรู้แบบโต้ตอบด้วยกล้อง AR (Index Finger Tracking)
+                </p>
+                <p class="text-slate-300 text-xs md:text-sm mt-2 max-w-lg mx-auto">
+                    กลุ่มสาระการเรียนรู้วิทยาศาสตร์และเทคโนโลยี (วิทยาการคำนวณ) ระดับชั้น ม.1
+                </p>
+            </div>
+
+            <!-- Curriculum Indicator Info -->
+            <div class="bg-cyan-950/40 border border-cyan-500/30 p-3.5 rounded-2xl text-left text-xs space-y-1">
+                <div class="font-extrabold text-cyan-300 flex items-center gap-2">
+                    <i class="fa-solid fa-graduation-cap"></i> ตัวชี้วัด ว 4.2 ม.1/2
+                </div>
+                <p class="text-slate-300">
+                    ออกแบบอัลกอริทึมที่ใช้แนวคิดเชิงคำนวณในการแก้ปัญหา หรือการทำงานที่พบในชีวิตประจำวัน
+                </p>
+            </div>
+
+            <!-- Control Instructions -->
+            <div class="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 text-left text-xs text-slate-300 space-y-2 font-kanit">
+                <div class="text-yellow-400 font-bold flex items-center gap-2">
+                    <i class="fa-solid fa-circle-info"></i> วิธีการเล่นเกม:
+                </div>
+                <ol class="list-decimal list-inside space-y-1 text-slate-300 text-[11px] md:text-xs">
+                    <li>ยกมือขึ้นมาหน้ากล้องระบบจะตรวจจับ <b class="text-cyan-300">"ปลายนิ้วชี้"</b> ของคุณ</li>
+                    <li>ขยับปลายนิ้วชี้ไป <b class="text-purple-300">ชี้จ่อค้างไว้</b> เหนือตัวเลือกคำตอบที่ถูกต้อง</li>
+                    <li>รอให้หลอดโหลดวงกลมสีฟ้าเต็มวง (ประมาณ 1.5 วินาที) เพื่อยืนยันการตอบ</li>
+                    <li>หากไม่สะดวกเปิดกล้อง สามารถใช้นิ้วทัชสกรีนหรือเมาส์คลิกตอบแทนได้ทันที</li>
+                </ol>
+            </div>
+
+            <!-- Start Game Buttons -->
+            <div class="flex flex-col sm:flex-row gap-3">
+                <button id="btn-start-ar" class="flex-1 py-4 rounded-2xl bg-gradient-to-r from-cyan-500 via-purple-600 to-pink-500 hover:from-cyan-400 hover:to-pink-400 text-black font-extrabold text-base md:text-lg tracking-wide uppercase shadow-lg shadow-cyan-500/30 transition transform hover:-translate-y-0.5 active:translate-y-0">
+                    <i class="fa-solid fa-camera mr-2"></i> เปิดกล้องเล่นด้วยนิ้วชี้
+                </button>
+                <button id="btn-start-touch" class="py-4 px-6 rounded-2xl bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-sm md:text-base border border-cyan-500/30 transition">
+                    <i class="fa-solid fa-mouse-pointer mr-1"></i> โหมดสัมผัส/เมาส์
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================== -->
+    <!-- SUMMARY REPORT OVERLAY SCREEN -->
+    <!-- ========================================================================== -->
+    <div id="screen-summary" class="hidden absolute inset-0 z-50 bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-4 overflow-y-auto">
+        <div class="max-w-xl w-full bg-slate-900 border border-cyan-500/40 rounded-3xl p-6 md:p-8 text-center space-y-6 shadow-2xl relative my-auto">
+            <!-- Trophy Icon -->
+            <div class="w-20 h-20 mx-auto rounded-3xl bg-gradient-to-tr from-yellow-400 via-amber-500 to-yellow-600 flex items-center justify-center text-slate-950 text-4xl shadow-xl shadow-yellow-500/30 animate-bounce">
+                🏆
+            </div>
+
+            <div>
+                <span class="text-xs font-mono text-cyan-400 tracking-widest uppercase">รายงานผลการทำภารกิจ</span>
+                <h2 class="text-2xl md:text-3xl font-black text-white mt-1">สรุปการเรียนรู้อัลกอริทึม</h2>
+                <p class="text-slate-300 text-xs md:text-sm mt-1">การทดสอบตัวชี้วัด ว 4.2 ม.1/2 (เต็ม 100 คะแนน)</p>
+            </div>
+
+            <!-- Score Summary Cards -->
+            <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex justify-around items-center">
+                <div>
+                    <div class="text-xs text-slate-400 uppercase font-mono">คะแนนรวมที่ได้</div>
+                    <div id="report-score" class="text-3xl md:text-4xl font-black text-yellow-400 font-mono mt-1">0 / 100</div>
+                </div>
+                <div class="h-10 w-px bg-slate-800"></div>
+                <div>
+                    <div class="text-xs text-slate-400 uppercase font-mono">ระดับความเข้าใจ</div>
+                    <div id="report-level" class="text-base md:text-lg font-extrabold text-emerald-400 mt-1">ดีเยี่ยม</div>
+                </div>
+            </div>
+
+            <!-- Evaluation Criteria Breakdown -->
+            <div class="bg-slate-950/60 p-4 rounded-2xl border border-slate-800 text-left space-y-2">
+                <h3 class="text-xs font-bold font-mono text-cyan-300 uppercase">ข้อเสนอแนะการเรียนรู้:</h3>
+                <p id="report-feedback-text" class="text-xs text-slate-300 leading-relaxed">
+                    -
+                </p>
+            </div>
+
+            <!-- Restart Button -->
+            <button id="btn-restart" class="w-full py-4 rounded-2xl bg-gradient-to-r from-cyan-500 via-purple-600 to-pink-500 text-black font-extrabold text-base tracking-wider uppercase shadow-lg shadow-cyan-500/30 active:scale-95 transition">
+                <i class="fa-solid fa-rotate-right mr-2"></i> เริ่มทำภารกิจใหม่อีกครั้ง
+            </button>
+        </div>
+    </div>
+
+    <!-- ========================================================================== -->
+    <!-- JAVASCRIPT LOGIC & ALGORITHM GAME ENGINE -->
+    <!-- ========================================================================== -->
+    <script>
+        /* ==========================================================================
+           1. WEB AUDIO SYNTHESIZER ENGINE (Pure Web Audio Sound Generator)
+           ========================================================================== */
+        class AlgoAudioSynth {
+            constructor() {
+                this.ctx = null;
+                this.isMuted = false;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+
+            playHoverSound() {
+                if (this.isMuted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(440, now);
+                osc.frequency.exponentialRampToValueAtTime(660, now + 0.08);
+
+                gain.gain.setValueAtTime(0.08, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.08);
+            }
+
+            playCorrectSound() {
+                if (this.isMuted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+                notes.forEach((freq, i) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now + i * 0.08);
+
+                    gain.gain.setValueAtTime(0.2, now + i * 0.08);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.2);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + i * 0.08);
+                    osc.stop(now + i * 0.08 + 0.2);
+                });
+            }
+
+            playWrongSound() {
+                if (this.isMuted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(220, now);
+                osc.frequency.linearRampToValueAtTime(130, now + 0.25);
+
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.25);
+            }
+
+            playFanfare() {
+                if (this.isMuted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+                notes.forEach((freq, i) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, now + i * 0.1);
+
+                    gain.gain.setValueAtTime(0.2, now + i * 0.1);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.3);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + i * 0.1);
+                    osc.stop(now + i * 0.1 + 0.3);
+                });
+            }
+        }
+
+        const audio = new AlgoAudioSynth();
+
+        /* ==========================================================================
+           2. CURRICULUM QUESTION DATASET (ว 4.2 ม.1/2) - 10 QUESTIONS
+           ========================================================================== */
+        const ALGO_QUESTIONS = [
+            {
+                id: 1,
+                category: "แนวคิดเชิงคำนวณ",
+                title: "ข้อใดเรียงลำดับขั้นตอนการทอดไข่เจียวตามหลักอัลกอริทึมได้ถูกต้อง?",
+                desc: "จงเลือกขั้นตอนการทำงานที่เป็นลำดับขั้นตอนชัดเจนที่สุด",
+                options: [
+                    { text: "1. ตอกไข่ใส่ชาม ➔ 2. ปรุงรสและเจียว ➔ 3. ตั้งกระทะใส่น้ำมัน ➔ 4. ทอดจนสุก", correct: false },
+                    { text: "1. ตั้งกระทะใส่น้ำมัน ➔ 2. ตอกไข่และปรุงรส ➔ 3. เทลงกระทะทอด ➔ 4. ตักใส่จาน", correct: true },
+                    { text: "1. ตักใส่จาน ➔ 2. ตั้งกระทะ ➔ 3. ปรุงรส ➔ 4. ทอดไข่", correct: false },
+                    { text: "1. ปรุงรส ➔ 2. ตักใส่จาน ➔ 3. ตอกไข่ ➔ 4. จุดไฟตั้งกระทะ", correct: false }
+                ],
+                explanation: "อัลกอริทึมที่ดีต้องเรียงลำดับจากจุดเริ่มต้น ตระเตรียมอุปกรณ์/วัตถุดิบ ดำเนินการ และจบที่ผลลัพธ์อย่างเป็นขั้นตอน"
+            },
+            {
+                id: 2,
+                category: "รหัสลำลอง (Pseudocode)",
+                title: "สัญลักษณ์ใดในผังงาน (Flowchart) ที่ใช้สำหรับการ 'ตัดสินใจ/เลือกทำ'?",
+                desc: "พิจารณาสัญลักษณ์มาตรฐานในการเขียนผังงาน",
+                options: [
+                    { text: "สี่เหลี่ยมผืนผ้า (Rectangle)", correct: false },
+                    { text: "วงกลม/วงรี (Oval)", correct: false },
+                    { text: "สี่เหลี่ยมขนมเปียกปูน (Diamond)", correct: true },
+                    { text: "สี่เหลี่ยมด้านขนาน (Parallelogram)", correct: false }
+                ],
+                explanation: "สี่เหลี่ยมขนมเปียกปูน (Diamond) ใช้สำหรับเงื่อนไขการตัดสินใจ (Decision) ซึ่งจะมีทางออกจากสัญลักษณ์มากกว่า 1 ทาง (จริง/เท็จ)"
+            },
+            {
+                id: 3,
+                category: "การเรียงลำดับ (Sorting Algorithm)",
+                title: "การเรียงลำดับตัวเลข [5, 2, 8, 1] จากน้อยไปมาก สเต็ปแรกของการสลับข้อมูลควรได้ผลลัพธ์อย่างไร?",
+                desc: "พิจารณาการเปรียบเทียบทีละคู่จากซ้ายไปขวา (Bubble Sort)",
+                options: [
+                    { text: "[2, 5, 8, 1]", correct: true },
+                    { text: "[5, 8, 2, 1]", correct: false },
+                    { text: "[1, 2, 5, 8]", correct: false },
+                    { text: "[8, 5, 2, 1]", correct: false }
+                ],
+                explanation: "เปรียบเทียบคู่แรก 5 กับ 2 เนื่องจาก 5 มากกว่า 2 จึงทำการสลับตำแหน่งได้เป็น [2, 5, 8, 1]"
+            },
+            {
+                id: 4,
+                category: "การค้นหาข้อมูล (Search Algorithm)",
+                title: "หากต้องการค้นหาคำว่า 'คอมพิวเตอร์' ในพจนานุกรมอย่างรวดเร็ว ควรใช้เทคนิคใด?",
+                desc: "เลือกอัลกอริทึมที่มีประสิทธิภาพสูงสุดสำหรับข้อมูลที่เรียงลำดับแล้ว",
+                options: [
+                    { text: "การค้นหาแบบตามลำดับ (Sequential Search) เปิดทีละหน้าตั้งแต่หน้าแรก", correct: false },
+                    { text: "การค้นหาแบบแบ่งครึ่ง (Binary Search) เปิดตรงกลางแล้วตัดครึ่งเล่มที่ไม่เกี่ยวข้องออก", correct: true },
+                    { text: "การสุ่มเปิดหน้าหนังสือไปเรื่อยๆ (Random Search)", correct: false },
+                    { text: "การเปิดจากหน้าสุดท้ายย้อนกลับมาหน้าแรก", correct: false }
+                ],
+                explanation: "Binary Search เหมาะกับข้อมูลที่เรียงลำดับไว้แล้ว โดยแบ่งครึ่งข้อมูลแล้วตัดส่วนที่ไม่ใช่ออกทีละละครึ่ง ทำให้ค้นหาได้รวดเร็วมาก"
+            },
+            {
+                id: 5,
+                category: "อัลกอริทึมในชีวิตประจำวัน",
+                title: "การแปรงฟันอย่างถูกวิธี ข้อใดคือเงื่อนไขการทำซ้ำ (Loop) ที่ถูกต้อง?",
+                desc: "ระบุเงื่อนไขการหยุดทำงานของการแปรงฟัน",
+                options: [
+                    { text: "แปรงฟันไปเรื่อยๆ โดยไม่มีจุดสิ้นสุด", correct: false },
+                    { text: "ทำซ้ำการแปรงฟันจนกว่าจะครบทุกซี่และสะอาดครบ 2 นาที", correct: true },
+                    { text: "แปรงฟันเฉพาะตอนที่ตื่นนอนเท่านั้น", correct: false },
+                    { text: "บ้วนน้ำเกลือก่อนแล้วค่อยแปรงฟัน 1 ครั้ง", correct: false }
+                ],
+                explanation: "การทำงานแบบทำซ้ำ (Loop) ในอัลกอริทึมจำเป็นต้องมี 'เงื่อนไขในการหยุดทำซ้ำ' ที่ชัดเจน เพื่อป้องกันการทำงานไม่รู้จบ (Infinite Loop)"
+            },
+            {
+                id: 6,
+                category: "การเขียนผังงาน (Flowchart)",
+                title: "สัญลักษณ์ 'วงรี/สี่เหลี่ยมมุมมน' ในผังงาน มีความหมายว่าอย่างไร?",
+                desc: "สัญลักษณ์พื้นฐานในผังงาน",
+                options: [
+                    { text: "จุดเริ่มต้น (Start) หรือ จุดสิ้นสุด (End)", correct: true },
+                    { text: "การประมวลผล / คำนวณ (Process)", correct: false },
+                    { text: "การรับข้อมูลเข้าทางคีย์บอร์ด (Manual Input)", correct: false },
+                    { text: "ทิศทางการไหลของข้อมูล (Flow Line)", correct: false }
+                ],
+                explanation: "วงรีหรือสี่เหลี่ยมมุมมน (Terminal) ใช้สำหรับแสดงจุดเริ่มต้น (Start) และจุดสิ้นสุด (Stop/End) ของอัลกอริทึม"
+            },
+            {
+                id: 7,
+                category: "การแก้ปัญหาเชิงคำนวณ",
+                title: "เมื่อพบปัญหาโปรแกรมทำงานผิดพลาด (Bug) ขั้นตอนแรกในการแก้ปัญหาอัลกอริทึมคืออะไร?",
+                desc: "การวางแผนและวิเคราะห์ปัญหา",
+                options: [
+                    { text: "เขียนโค้ดใหม่ทั้งหมดทันที", correct: false },
+                    { text: "ระบุและทำความเข้าใจปัญหา (Decomposition & Bug Identification)", correct: true },
+                    { text: "ปิดคอมพิวเตอร์แล้วเปิดใหม่", correct: false },
+                    { text: "ถามเพื่อนโดยไม่ตรวจสอบโค้ดตนเอง", correct: false }
+                ],
+                explanation: "ขั้นตอนแรกของการแก้ปัญหาคือการวิเคราะห์และทำความเข้าใจปัญหา เพื่อทราบสาเหตุที่แท้จริงก่อนลงมือแก้ไข"
+            },
+            {
+                id: 8,
+                category: "โครงสร้างควบคุม (Control Structure)",
+                title: "คำว่า 'ถ้าฝนตก ให้กางร่ม ถ้าฝนไม่ตก ให้เดินตามปกติ' ตรงกับโครงสร้างแบบใด?",
+                desc: "โครงสร้างทางเลือกในอัลกอริทึม",
+                options: [
+                    { text: "โครงสร้างแบบเรียงลำดับ (Sequential Structure)", correct: false },
+                    { text: "โครงสร้างแบบเลือกทำ/เงื่อนไข (Selection / Condition Structure)", correct: true },
+                    { text: "โครงสร้างแบบทำซ้ำ (Repetition / Loop Structure)", correct: false },
+                    { text: "โครงสร้างแบบขนาน (Parallel Structure)", correct: false }
+                ],
+                explanation: "เป็นการเลือกทำ (If-Else) ตามเงื่อนไขที่กำหนด โดยผลลัพธ์จะมีทางเลือกอย่างใดอย่างหนึ่งขึ้นอยู่กับเงื่อนไข"
+            },
+            {
+                id: 9,
+                category: "การแยกย่อยปัญหา (Decomposition)",
+                title: "การจัดกระเป๋านักเรียนตามตารางเรียนวันจันทร์ ควรใช้แนวคิดแยกย่อยปัญหาอย่างไร?",
+                desc: "การย่อยปัญหาใหญ่ให้เป็นปัญหาย่อยๆ",
+                options: [
+                    { text: "ขนหนังสือทุกเล่มในบ้านใส่กระเป๋า", correct: false },
+                    { text: "แยกดูรายวิชาตารางเรียนวันจันทร์ ➔ เช็กหนังสือแต่ละวิชา ➔ จัดใส่กระเป๋า", correct: true },
+                    { text: "ยืมหนังสือเพื่อนเรียนทุกวิชา", correct: false },
+                    { text: "จัดกระเป๋าเฉพาะวิชาที่ชอบเท่านั้น", correct: false }
+                ],
+                explanation: "การแตกปัญหาใหญ่ออกเป็นขั้นตอนย่อยที่ชัดเจน ช่วยให้แก้ไขปัญหาได้อย่างมีระบบและไม่สับสน"
+            },
+            {
+                id: 10,
+                category: "คุณสมบัติของอัลกอริทึม",
+                title: "ข้อใด **ไม่ใช่** คุณสมบัติที่ดีของอัลกอริทึม?",
+                desc: "หลักการออกแบบอัลกอริทึมที่ถูกต้อง",
+                options: [
+                    { text: "มีลำดับขั้นตอนชัดเจน ไม่คลุมเครือ", correct: false },
+                    { text: "มีความก้ำกวม ปรับเปลี่ยนตามใจชอบได้ตลอดเวลา", correct: true },
+                    { text: "มีจุดสิ้นสุดของการทำงาน", correct: false },
+                    { text: "ให้ผลลัพธ์ถูกต้องตามวัตถุประสงค์", correct: false }
+                ],
+                explanation: "อัลกอริทึมที่ดีต้องมีความชัดเจน ไม่ก้ำกวม (Definiteness) เพื่อให้คอมพิวเตอร์หรือมนุษย์ปฏิบัติตามได้อย่างถูกต้อง"
+            }
+        ];
+
+        /* ==========================================================================
+           3. APPLICATION STATE MANAGEMENT
+           ========================================================================== */
+        let state = {
+            isPlaying: false,
+            useCamera: false,
+            currentQIndex: 0,
+            score: 0,
+            hoverTargetIndex: null,
+            hoverProgress: 0, // 0.0 to 1.0
+            hoverStartTime: 0,
+            hoverDuration: 1500, // 1.5 seconds hold to select
+            
+            // Finger Tracking Pos (Screen coords)
+            fingerCursor: null, // { x, y }
+
+            lastFrameTime: performance.now()
+        };
+
+        /* ==========================================================================
+           4. CANVAS & MEDIAPIPE HANDS ENGINE
+           ========================================================================== */
+        const videoElement = document.getElementById('webcam-video');
+        const arCanvas = document.getElementById('ar-canvas');
+        const fxCanvas = document.getElementById('fx-canvas');
+        const arCtx = arCanvas.getContext('2d');
+        const fxCtx = fxCanvas.getContext('2d');
+
+        function handleResize() {
+            arCanvas.width = window.innerWidth;
+            arCanvas.height = window.innerHeight;
+            fxCanvas.width = window.innerWidth;
+            fxCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', handleResize);
+        handleResize();
+
+        // Setup MediaPipe Hands
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+
+        hands.onResults(onHandResults);
+
+        let camera = null;
+
+        function initCamera() {
+            camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    if (state.useCamera) {
+                        await hands.send({ image: videoElement });
+                    }
+                },
+                width: 1280,
+                height: 720
+            });
+            camera.start();
+        }
+
+        /* ==========================================================================
+           5. HAND TRACKING & INDEX FINGER CURSOR LOGIC
+           ========================================================================== */
+        function onHandResults(results) {
+            state.fingerCursor = null;
+
+            const badge = document.getElementById('hand-status-badge');
+            const dot = document.getElementById('hand-status-dot');
+            const text = document.getElementById('hand-status-text');
+            const alertBanner = document.getElementById('no-hand-alert');
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                
+                // Landmark 8 is INDEX_FINGER_TIP
+                const indexTip = landmarks[8];
+
+                // Screen coordinates conversion (Mirrored Horizontal)
+                const screenX = (1 - indexTip.x) * arCanvas.width;
+                const screenY = indexTip.y * arCanvas.height;
+
+                state.fingerCursor = { x: screenX, y: screenY };
+
+                // HUD Status Update
+                badge.className = "hidden sm:flex bg-emerald-500/20 border border-emerald-500/50 px-3 py-1.5 rounded-xl items-center gap-2 text-xs text-emerald-300";
+                dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping";
+                text.innerText = "พบปลายนิ้วชี้";
+                alertBanner.classList.add('hidden');
+            } else if (state.useCamera && state.isPlaying) {
+                // Warning Alert
+                badge.className = "hidden sm:flex bg-red-500/20 border border-red-500/50 px-3 py-1.5 rounded-xl items-center gap-2 text-xs text-red-300";
+                dot.className = "w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse";
+                text.innerText = "ไม่พบมือ";
+                alertBanner.classList.remove('hidden');
+            }
+        }
+
+        /* ==========================================================================
+           6. MAIN GAME RENDER LOOP & HOVER SELECTION MECHANIC
+           ========================================================================== */
+        function gameLoop(timestamp) {
+            if (!state.isPlaying) return;
+
+            const dt = timestamp - state.lastFrameTime;
+            state.lastFrameTime = timestamp;
+
+            // 1. Render Webcam Background Feed or Fallback Grid
+            arCtx.save();
+            arCtx.clearRect(0, 0, arCanvas.width, arCanvas.height);
+
+            if (state.useCamera && videoElement.readyState >= 2) {
+                arCtx.translate(arCanvas.width, 0);
+                arCtx.scale(-1, 1);
+                arCtx.drawImage(videoElement, 0, 0, arCanvas.width, arCanvas.height);
+                arCtx.restore();
+            } else {
+                arCtx.restore();
+                // Futuristic Cyber Grid Background
+                arCtx.fillStyle = '#0a0f1d';
+                arCtx.fillRect(0, 0, arCanvas.width, arCanvas.height);
+                
+                arCtx.strokeStyle = 'rgba(6, 182, 212, 0.08)';
+                arCtx.lineWidth = 1;
+                const size = 50;
+                for (let x = 0; x < arCanvas.width; x += size) {
+                    arCtx.beginPath();
+                    arCtx.moveTo(x, 0);
+                    arCtx.lineTo(x, arCanvas.height);
+                    arCtx.stroke();
+                }
+                for (let y = 0; y < arCanvas.height; y += size) {
+                    arCtx.beginPath();
+                    arCtx.moveTo(0, y);
+                    arCtx.lineTo(arCanvas.width, y);
+                    arCtx.stroke();
+                }
+            }
+
+            // 2. Clear FX Overlay Canvas
+            fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+
+            // 3. Process Hover / Hold Logic & Finger Cursor VFX
+            if (state.fingerCursor) {
+                processFingerHover(timestamp);
+                drawFingerCursor();
+            } else {
+                state.hoverTargetIndex = null;
+                state.hoverProgress = 0;
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function processFingerHover(now) {
+            const cursor = state.fingerCursor;
+            const optionElements = document.querySelectorAll('.option-card');
+            let hoveredIndex = null;
+
+            optionElements.forEach((el, index) => {
+                const rect = el.getBoundingClientRect();
+                if (
+                    cursor.x >= rect.left &&
+                    cursor.x <= rect.right &&
+                    cursor.y >= rect.top &&
+                    cursor.y <= rect.bottom
+                ) {
+                    hoveredIndex = index;
+                }
+            });
+
+            if (hoveredIndex !== null) {
+                if (state.hoverTargetIndex !== hoveredIndex) {
+                    // New Hover Target
+                    state.hoverTargetIndex = hoveredIndex;
+                    state.hoverStartTime = now;
+                    state.hoverProgress = 0;
+                    audio.playHoverSound();
+                } else {
+                    // Continuing Hover
+                    const elapsed = now - state.hoverStartTime;
+                    state.hoverProgress = Math.min(1.0, elapsed / state.hoverDuration);
+
+                    // Trigger Selection when Progress completes
+                    if (state.hoverProgress >= 1.0) {
+                        selectOption(state.hoverTargetIndex);
+                        state.hoverTargetIndex = null;
+                        state.hoverProgress = 0;
+                    }
+                }
+            } else {
+                state.hoverTargetIndex = null;
+                state.hoverProgress = 0;
+            }
+
+            // Highlight Active DOM Option Card
+            optionElements.forEach((el, index) => {
+                if (index === state.hoverTargetIndex) {
+                    el.classList.add('border-cyan-400', 'bg-cyan-950/80', 'scale-[1.02]');
+                } else {
+                    el.classList.remove('border-cyan-400', 'bg-cyan-950/80', 'scale-[1.02]');
+                }
+            });
+        }
+
+        function drawFingerCursor() {
+            const { x, y } = state.fingerCursor;
+
+            fxCtx.save();
+
+            // Outer Pulsing Glow Aura
+            fxCtx.beginPath();
+            fxCtx.arc(x, y, 28, 0, Math.PI * 2);
+            fxCtx.fillStyle = 'rgba(6, 182, 212, 0.2)';
+            fxCtx.fill();
+            fxCtx.strokeStyle = '#06b6d4';
+            fxCtx.lineWidth = 2;
+            fxCtx.stroke();
+
+            // Progress Radial Ring during Hover
+            if (state.hoverProgress > 0) {
+                fxCtx.beginPath();
+                fxCtx.arc(x, y, 34, -Math.PI / 2, (-Math.PI / 2) + (Math.PI * 2 * state.hoverProgress));
+                fxCtx.strokeStyle = '#38bdf8';
+                fxCtx.lineWidth = 6;
+                fxCtx.stroke();
+            }
+
+            // Inner Core Dot
+            fxCtx.beginPath();
+            fxCtx.arc(x, y, 8, 0, Math.PI * 2);
+            fxCtx.fillStyle = '#f43f5e';
+            fxCtx.fill();
+
+            // Label Indicator
+            fxCtx.font = 'bold 12px "Kanit", sans-serif';
+            fxCtx.fillStyle = '#ffffff';
+            fxCtx.textAlign = 'center';
+            fxCtx.shadowColor = 'black';
+            fxCtx.shadowBlur = 4;
+            fxCtx.fillText('👈 ปลายนิ้วชี้', x, y - 42);
+
+            fxCtx.restore();
+        }
+
+        /* ==========================================================================
+           7. QUESTION RENDERER & ANSWER LOGIC
+           ========================================================================== */
+        function loadCurrentQuestion() {
+            const q = ALGO_QUESTIONS[state.currentQIndex];
+
+            document.getElementById('hud-q-number').innerText = `${state.currentQIndex + 1} / ${ALGO_QUESTIONS.length}`;
+            document.getElementById('hud-score').innerText = `${state.score} pts`;
+            document.getElementById('q-category').innerHTML = `<i class="fa-solid fa-cubes mr-1"></i> ${q.category}`;
+            document.getElementById('q-title').innerText = q.title;
+            document.getElementById('q-description').innerText = q.desc;
+
+            const grid = document.getElementById('options-grid');
+            grid.innerHTML = '';
+
+            const optionLabels = ['A', 'B', 'C', 'D'];
+
+            q.options.forEach((opt, index) => {
+                const btn = document.createElement('button');
+                btn.className = `option-card relative text-left p-4 md:p-5 rounded-2xl bg-slate-900/90 border-2 border-slate-700/80 hover:border-cyan-400 transition transform duration-200 flex items-start gap-3 md:gap-4 shadow-lg group`;
+                btn.onclick = () => selectOption(index);
+
+                btn.innerHTML = `
+                    <span class="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-slate-800 group-hover:bg-cyan-500 group-hover:text-black font-mono font-black text-sm md:text-base text-cyan-400 flex items-center justify-center shrink-0 border border-slate-700 transition">
+                        ${optionLabels[index]}
+                    </span>
+                    <span class="text-xs md:text-sm font-semibold text-slate-200 leading-relaxed my-auto">
+                        ${opt.text}
+                    </span>
+                `;
+                grid.appendChild(btn);
+            });
+        }
+
+        function selectOption(selectedIndex) {
+            const q = ALGO_QUESTIONS[state.currentQIndex];
+            const isCorrect = q.options[selectedIndex].correct;
+
+            const modal = document.getElementById('modal-feedback');
+            const card = document.getElementById('feedback-card');
+            const iconContainer = document.getElementById('feedback-icon-container');
+            const icon = document.getElementById('feedback-icon');
+            const title = document.getElementById('feedback-title');
+            const msg = document.getElementById('feedback-msg');
+
+            if (isCorrect) {
+                state.score += 10;
+                audio.playCorrectSound();
+                card.className = "max-w-md w-full bg-slate-900 border-2 border-emerald-500 rounded-3xl p-6 text-center space-y-4 shadow-2xl glow-green";
+                iconContainer.className = "w-16 h-16 mx-auto rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-3xl font-black";
+                icon.className = "fa-solid fa-circle-check";
+                title.innerText = "ถูกต้องแม่นยำ! 🎉";
+                title.className = "text-xl md:text-2xl font-black text-emerald-400";
+            } else {
+                audio.playWrongSound();
+                card.className = "max-w-md w-full bg-slate-900 border-2 border-red-500 rounded-3xl p-6 text-center space-y-4 shadow-2xl";
+                iconContainer.className = "w-16 h-16 mx-auto rounded-2xl bg-red-500/20 text-red-400 flex items-center justify-center text-3xl font-black";
+                icon.className = "fa-solid fa-circle-xmark";
+                title.innerText = "ยังไม่ถูกต้อง! 💡";
+                title.className = "text-xl md:text-2xl font-black text-red-400";
+            }
+
+            msg.innerText = q.explanation;
+            modal.classList.remove('hidden');
+        }
+
+        document.getElementById('btn-next-q').addEventListener('click', () => {
+            document.getElementById('modal-feedback').classList.add('hidden');
+            state.currentQIndex++;
+
+            if (state.currentQIndex < ALGO_QUESTIONS.length) {
+                loadCurrentQuestion();
+            } else {
+                showSummaryReport();
+            }
+        });
+
+        /* ==========================================================================
+           8. SUMMARY REPORT GENERATOR
+           ========================================================================== */
+        function showSummaryReport() {
+            state.isPlaying = false;
+            audio.playFanfare();
+
+            document.getElementById('report-score').innerText = `${state.score} / 100`;
+
+            const levelEl = document.getElementById('report-level');
+            const feedbackEl = document.getElementById('report-feedback-text');
+
+            if (state.score >= 80) {
+                levelEl.innerText = "ระดับดีเยี่ยม 🌟";
+                levelEl.className = "text-base md:text-lg font-extrabold text-emerald-400 mt-1";
+                feedbackEl.innerText = "นักเรียนมีความเข้าใจในแนวคิดเชิงคำนวณและอัลกอริทึมในระดับดีเยี่ยม สามารถออกแบบและเรียงลำดับขั้นตอนการแก้ปัญหาได้อย่างเป็นระบบ!";
+            } else if (state.score >= 50) {
+                levelEl.innerText = "ระดับปานกลาง 👍";
+                levelEl.className = "text-base md:text-lg font-extrabold text-cyan-400 mt-1";
+                feedbackEl.innerText = "นักเรียนผ่านเกณฑ์ความเข้าใจพื้นฐาน ควรทบทวนการเรียงลำดับขั้นตอนทางเลือกและเงื่อนไขเพิ่มเติมเพื่อความแม่นยำยิ่งขึ้น";
+            } else {
+                levelEl.innerText = "ควรฝึกฝนเพิ่มเติม 💡";
+                levelEl.className = "text-base md:text-lg font-extrabold text-yellow-400 mt-1";
+                feedbackEl.innerText = "แนะนำให้ทบทวนสัญลักษณ์ผังงาน (Flowchart) และลองฝึกแตกปัญหาย่อยในชีวิตประจำวันเพื่อพัฒนาทักษะอัลกอริทึม";
+            }
+
+            document.getElementById('screen-summary').classList.remove('hidden');
+        }
+
+        /* ==========================================================================
+           9. UI EVENT CONTROLLERS
+           ========================================================================== */
+        function startNewGame() {
+            state.score = 0;
+            state.currentQIndex = 0;
+            state.isPlaying = true;
+
+            loadCurrentQuestion();
+            state.lastFrameTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        }
+
+        document.getElementById('btn-start-ar').addEventListener('click', () => {
+            audio.init();
+            audio.playHoverSound();
+            state.useCamera = true;
+            document.getElementById('screen-start').classList.add('hidden');
+            initCamera();
+            startNewGame();
+        });
+
+        document.getElementById('btn-start-touch').addEventListener('click', () => {
+            audio.init();
+            audio.playHoverSound();
+            state.useCamera = false;
+            document.getElementById('screen-start').classList.add('hidden');
+            startNewGame();
+        });
+
+        document.getElementById('btn-restart').addEventListener('click', () => {
+            audio.playHoverSound();
+            document.getElementById('screen-summary').classList.add('hidden');
+            startNewGame();
+        });
+
+        document.getElementById('btn-sound').addEventListener('click', () => {
+            audio.isMuted = !audio.isMuted;
+            document.getElementById('sound-icon').className = audio.isMuted ? 'fa-solid fa-volume-xmark text-base' : 'fa-solid fa-volume-high text-base';
+        });
+    </script>
+</body>
+</html>
